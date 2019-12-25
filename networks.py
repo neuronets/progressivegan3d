@@ -58,9 +58,11 @@ class Generator:
 
         return tf.keras.models.Sequential(block_layers, name=name)
 
-    def add_resolution(self, res):
+    def add_resolution(self):
 
-        g_block = self._make_generator_block(self._nf(res), name='g_block_{}'.format(res))
+        self.current_resolution += 1
+
+        g_block = self._make_generator_block(self._nf(self.current_resolution), name='g_block_{}'.format(self.current_resolution))
 
         g_block_output = g_block(self.growing_generator.output)
 
@@ -74,7 +76,6 @@ class Generator:
 
         self.growing_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=g_block_output)
         self.train_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=[lerp_output])
-        self.current_resolution = res
 
     def get_current_resolution(self):
         return current_resolution
@@ -136,20 +137,22 @@ class Discriminator:
 
         return tf.keras.models.Sequential(block_layers, name=name)
 
-    def add_resolution(self, res):
+    def add_resolution(self):
 
-        inputs = layers.Input(shape=[2.0**res, 2.0**res, self.num_channels], name='image')
+        self.current_resolution += 1
+
+        inputs = layers.Input(shape=[2.0**self.current_resolution, 2.0**self.current_resolution, self.num_channels], name='image')
         alpha = layers.Input(shape=[], name='d_alpha')
 
-        from_rgb_2 = layers.Conv2D(self._nf(res), kernel_size=1, padding='same', name='from_rgb_2')(inputs)
+        from_rgb_2 = layers.Conv2D(self._nf(self.current_resolution), kernel_size=1, padding='same', name='from_rgb_2')(inputs)
 
-        d_block = self._make_discriminator_block(self._nf(res-1), name='d_block_{}'.format(res))
+        d_block = self._make_discriminator_block(self._nf(self.current_resolution-1), name='d_block_{}'.format(self.current_resolution))
 
         from_rgb_2 = d_block(from_rgb_2)
 
         # Residual from input
         from_rgb_1 = layers.AveragePooling2D()(inputs)
-        from_rgb_1 = layers.Conv2D(self._nf(res-1), kernel_size=1, padding='same', name='from_rgb_1')(from_rgb_1)
+        from_rgb_1 = layers.Conv2D(self._nf(self.current_resolution-1), kernel_size=1, padding='same', name='from_rgb_1')(from_rgb_1)
 
         lerp_input = self._weighted_sum()([from_rgb_1, from_rgb_2, alpha])
 
@@ -157,7 +160,6 @@ class Discriminator:
 
         self.growing_discriminator = tf.keras.Sequential([d_block, self.growing_discriminator])
         self.train_discriminator = tf.keras.models.Model(inputs=[inputs, alpha], outputs=[score_output])
-        self.current_resolution = res
 
     def get_current_resolution(self):
         return self.current_resolution
