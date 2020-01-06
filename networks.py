@@ -1,5 +1,3 @@
-from functools import partial
-
 import tensorflow as tf
 import tensorflow.keras.layers as layers
 
@@ -26,8 +24,6 @@ class Generator:
         return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=1, keepdims=True) + epsilon))
 
     def _weighted_sum(self):
-        # tf.print(inputs[0])
-        # return layers.Lambda(lambda inputs : 0.5*inputs[0]+0.5*inputs[1])
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])
 
     def _nf(self, stage): 
@@ -35,7 +31,7 @@ class Generator:
 
     def _make_generator_base(self):
 
-        latents = layers.Input(shape=[self.latents_size], dtype=tf.float32, name='latents')
+        latents = layers.Input(shape=[self.latents_size], name='latents')
         alpha = layers.Input(shape=[], dtype=tf.float32, name='g_alpha')
 
         # Latents stage
@@ -62,20 +58,20 @@ class Generator:
 
         self.current_resolution += 1
 
-        g_block = self._make_generator_block(self._nf(self.current_resolution), name='g_block_{}'.format(self.current_resolution))
-
-        g_block_output = g_block(self.growing_generator.output)
-
         # Residual from input
         to_rgb_1 = layers.UpSampling2D()(self.growing_generator.output)
         to_rgb_1 = layers.Conv2D(self.num_channels, kernel_size=1)(to_rgb_1)
-
+       
+        # Growing generator
+        g_block = self._make_generator_block(self._nf(self.current_resolution), name='g_block_{}'.format(self.current_resolution))
+        g_block_output = g_block(self.growing_generator.output)
         to_rgb_2 = layers.Conv2D(self.num_channels, kernel_size=1)(g_block_output)
 
         lerp_output = self._weighted_sum()([to_rgb_1, to_rgb_2, self.growing_generator.input[1]])
+        output = layers.Activation('tanh')(lerp_output)
 
         self.growing_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=g_block_output)
-        self.train_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=[lerp_output])
+        self.train_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=[output])
 
     def get_current_resolution(self):
         return current_resolution
@@ -107,8 +103,6 @@ class Discriminator:
         self.current_resolution = 1
 
     def _weighted_sum(self):
-        return layers.Lambda(lambda inputs : 0.5*inputs[0]+0.5*inputs[1])
-
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])
 
     def _nf(self, stage): 
@@ -144,15 +138,14 @@ class Discriminator:
         inputs = layers.Input(shape=[2.0**self.current_resolution, 2.0**self.current_resolution, self.num_channels], name='image')
         alpha = layers.Input(shape=[], name='d_alpha')
 
-        from_rgb_2 = layers.Conv2D(self._nf(self.current_resolution), kernel_size=1, padding='same', name='from_rgb_2')(inputs)
-
-        d_block = self._make_discriminator_block(self._nf(self.current_resolution-1), name='d_block_{}'.format(self.current_resolution))
-
-        from_rgb_2 = d_block(from_rgb_2)
-
         # Residual from input
         from_rgb_1 = layers.AveragePooling2D()(inputs)
         from_rgb_1 = layers.Conv2D(self._nf(self.current_resolution-1), kernel_size=1, padding='same', name='from_rgb_1')(from_rgb_1)
+
+        # Growing discriminator
+        d_block = self._make_discriminator_block(self._nf(self.current_resolution-1), name='d_block_{}'.format(self.current_resolution))
+        from_rgb_2 = layers.Conv2D(self._nf(self.current_resolution), kernel_size=1, padding='same', name='from_rgb_2')(inputs)
+        from_rgb_2 = d_block(from_rgb_2)
 
         lerp_input = self._weighted_sum()([from_rgb_1, from_rgb_2, alpha])
 
