@@ -1,18 +1,30 @@
-from trainer import PGGAN
+import os
 import tensorflow as tf
 
-latents_size = 256
-n_classes = 1
-dataset_dir = 'data/ixi_slices'
-gpu = '/gpu:1'
+from opts import Opts
+from trainer import PGGAN
 
-with tf.device(gpu):
-    pggan = PGGAN(
-        latents_size=latents_size, 
-        dataset_dir=dataset_dir, 
-        n_classes=1, 
-        num_channels=1, 
-        run_id='1',
-        target_resolution=256)
+# os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 
-    pggan.train()
+def main(opts):
+    # latents_size = 1024
+    # n_classes = 1
+    # dataset_dir = 'data/ixi_slices'
+    # dataset_dir = 'data/ixi_t1'
+    # dataset_dir = 'data/ixi_t1.tfrecord'
+
+    # dimensionality = 3
+    # gpus = ['/gpu:0', '/gpu:1', '/gpu:6', '/gpu:7']
+    # # gpus = ['/gpu:0']
+    # run_id = 'temp3d_1'
+
+    if opts.task=='train':
+
+        pggan = PGGAN(opts)
+        pggan.train()
+
+
+if __name__ == '__main__':
+    opts = Opts()
+    opts = opts.parse()
+    main(opts)
