@@ -1,4 +1,6 @@
 import argparse
+import os
+
 import tensorflow as tf
 
 class Opts:
@@ -6,6 +8,12 @@ class Opts:
         self.parser = argparse.ArgumentParser()
 
         self.subparsers = self.parser.add_subparsers(help='prepare | train | generate', dest='task')
+
+        self.parser_prepare = self.subparsers.add_parser('prepare', help='Prepare tf records dataset')
+
+        self.parser_prepare.add_argument('--dataset_dir', required=True)
+        self.parser_prepare.add_argument('--save_path', required=True)
+        self.parser_prepare.add_argument('--dimensionality', default=2, type=int)
 
         # Train Task
         self.parser_train = self.subparsers.add_parser('train', help='Train the progressive GAN')
@@ -38,10 +46,16 @@ class Opts:
     def parse(self):
         opt = self.parser.parse_args()
 
-        if len(opt.gpus)>1:
-            opt.strategy = tf.distribute.MirroredStrategy(devices=opt.gpus)
+        if opt.task=='train':
 
-        opt.img_ext = 'jpg' if opt.dimensionality == 2 else 'nii.gz'
-        opt.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 2, 256: 1}
+            if len(opt.gpus)>1:
+                opt.strategy = tf.distribute.MirroredStrategy(devices=opt.gpus)
+            else:
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpus[0][-1])
+                opt.gpus = '/gpu:0'
+                opt.strategy = None
+
+            opt.img_ext = 'jpg' if opt.dimensionality == 2 else 'nii.gz'
+            opt.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 1, 256: 1}
 
         return opt

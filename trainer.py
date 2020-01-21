@@ -102,7 +102,7 @@ class PGGAN(tf.Module):
                 w_real_loss = losses.wasserstein_loss(1, reals_pred)
                 w_fake_loss = losses.wasserstein_loss(-1, fakes_pred) 
 
-                average_samples = utils.random_weight_sample(reals, fakes)
+                average_samples = utils.random_weight_sample(reals, fakes, dimensionality=self.dimensionality)
                 average_pred = self.train_discriminator([average_samples, alpha])
 
                 gp_loss = losses.gradient_penalty_loss(average_pred, average_samples, weight=10)
@@ -187,11 +187,7 @@ class PGGAN(tf.Module):
 
     def get_current_dataset(self, current_resolution):
         batch_size = self.get_current_batch_size(current_resolution)
-        if self.dimensionality == 2:
-            dataset = utils.get_dataset(self.dataset, current_resolution, 
-                        batch_size, dimensionality=self.dimensionality, num_channels=self.num_channels, img_ext=self.img_ext)
-        else:
-            dataset = utils.get_dataset_3d(self.dataset, current_resolution, batch_size)
+        dataset = utils.get_dataset(self.dataset, current_resolution, batch_size, self.dimensionality)
         return dataset
 
     def get_current_alpha(self, iters_done):
@@ -245,16 +241,20 @@ class PGGAN(tf.Module):
                 if iters_done > self.iters_per_transition:
                     break
 
-                with self.strategy.scope():
-                    latents = tf.random.normal((batch_size, self.latent_size)) 
-                # print(latents)
+                latents = tf.random.normal((batch_size, self.latent_size)) 
 
                 if i%self.d_repeats==0:
-                    with self.strategy.scope():
+                    if self.strategy is not None:
+                        with self.strategy.scope():
+                            g_loss = g_train_step(latents, alpha)
+                    else:
                         g_loss = g_train_step(latents, alpha)
                     g_loss_tracker.update_state(g_loss)
                 
-                with self.strategy.scope():
+                if self.strategy is not None:
+                    with self.strategy.scope():
+                        d_loss = d_train_step(latents, reals, alpha)
+                else:
                     d_loss = d_train_step(latents, reals, alpha)
                 d_loss_tracker.update_state(d_loss)
 
@@ -278,7 +278,11 @@ class PGGAN(tf.Module):
 
         current_resolution = int(np.log2(self.start_resolution))
         while 2**current_resolution < self.target_resolution:
-            with self.strategy.scope():
+            if self.strategy is not None:
+                with self.strategy.scope():
+                    current_resolution += 1
+                    self.add_resolution() 
+            else:
                 current_resolution += 1
                 self.add_resolution() 
 

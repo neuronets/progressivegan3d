@@ -11,85 +11,74 @@ def adjust_dynamic_range(data, drange_in, drange_out):
         data = data * scale + bias
     return data
 
-def random_weight_sample(reals, fakes):
-    weight_shape = (tf.shape(reals)[0],) + (1,1,1,1)
+def random_weight_sample(reals, fakes, dimensionality=2):
+    weight_shape = (tf.shape(reals)[0],) + (1,)+(1,)*dimensionality
     weight = tf.random.uniform(weight_shape, minval=0, maxval=1)
     return (weight * reals) + ((1 - weight) * fakes)
 
-def load_img(filepath, res=2, num_channels=3):
-    img = tf.io.read_file(filepath)
-    img = tf.image.decode_jpeg(img, channels=num_channels)
-    img = tf.image.resize(img, (2**res, 2**res))
+def parse_2d_image(record, target_res):
+    image_feature_description = {
+        'img': tf.io.FixedLenFeature([], tf.string),
+        'shape': tf.io.FixedLenFeature([3], tf.int64)
+    }
+    data = tf.io.parse_single_example(record, image_feature_description)
+    img = data['img']
+    img = tf.io.decode_raw(img, tf.uint8)
+    img = tf.cast(img, tf.float32)
+    img = tf.reshape(img, data['shape'])
+    img = tf.image.resize(img, (2**target_res, 2**target_res))
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
     return img
 
-# def load_3d_img(filepath, res=2, num_channels=3, full_res=8):
-#     img = nib.load(np.array(tf.convert_to_tensor(filepath, dtype=tf.string))).get_data()
-#     img = tf.cast(img, tf.float32)
-#     img = tf.reshape(img, (2**full_res, 2**full_res, 2**full_res))
-#     for i in range(full_res-res):
-#         img = img[0::2,0::2,0::2]+img[0::2,0::2,1::2]+img[0::2,1::2,0::2]+img[0::2,1::2,1::2] \
-#                         +img[1::2,0::2,0::2]+img[1::2,0::2,1::2]+img[1::2,1::2,0::2]+img[1::2,1::2,1::2]
-#         img = (img) * 0.125
-#     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
-#     return img
-
-def parse_3d_image(example_proto):
+def parse_3d_image(record, target_res):
     image_feature_description = {
-    'img': tf.io.FixedLenFeature([], tf.string),
-    'shape': tf.io.FixedLenFeature([3], tf.int64)
+        'img': tf.io.FixedLenFeature([], tf.string),
+        'shape': tf.io.FixedLenFeature([3], tf.int64)
     }
-    data = tf.io.parse_single_example(example_proto, image_feature_description)
-    mri = data['img']
-    mri = tf.io.decode_raw(mri, tf.uint8)
-    mri = tf.cast(mri, tf.float32)
-    mri = tf.reshape(mri, data['shape'])
-    return mri
+    data = tf.io.parse_single_example(record, image_feature_description)
+    img = data['img']
+    img = tf.io.decode_raw(img, tf.uint8)
+    img = tf.cast(img, tf.float32)
+    img = tf.reshape(img, data['shape'])
 
-def resize_3d_image(img, full_res, target_res):
+    shape = tf.cast(data['shape'], tf.float32)
+
+    full_res = tf.cast(tf.math.log(shape[0])/tf.math.log(2.0), tf.int32)
+
     for i in range(full_res-target_res):
         img = img[0::2,0::2,0::2]+img[0::2,0::2,1::2]+img[0::2,1::2,0::2]+img[0::2,1::2,1::2] \
                         +img[1::2,0::2,0::2]+img[1::2,0::2,1::2]+img[1::2,1::2,0::2]+img[1::2,1::2,1::2]
         img = (img) * 0.125
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
     img = tf.expand_dims(img, axis=-1)
+
     return img
 
-def get_dataset(dataset_dir, res, batch_size, num_channels=3, dimensionality=3, img_ext='jpg'):
-    with tf.device('cpu:0'):
-        dataset = tf.data.Dataset.list_files(os.path.join(dataset_dir, '*.'+img_ext))
-        dataset = dataset.map(lambda x: load_img(x, res=res, num_channels=num_channels), 
-            num_parallel_calls=tf.data.experimental.AUTOTUNE)
+def parse_image(record, target_res, dimensionality):
 
-        dataset = dataset.shuffle(200)
-        dataset = dataset.batch(batch_size, drop_remainder=True)
-        dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-        return dataset
+    if dimensionality==2:
+        return parse_2d_image(record, target_res)
+    else:
+        return parse_3d_image(record, target_res)
 
-def get_dataset_3d(dataset_dir, res, batch_size):
-    with tf.device('cpu:0'):
-        dataset = tf.data.TFRecordDataset(dataset_dir)
-        dataset = dataset.map(parse_3d_image, 
-                    num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.map(lambda x: resize_3d_image(x, full_res=8, target_res=res), 
-            num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.shuffle(200)
-        dataset = dataset.batch(batch_size, drop_remainder=True)
-        dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-        return dataset
 
-# def get_3d_dataset(dataset_dir, res, batch_size, num_channels=3, img_ext='jpg'):
+# def get_dataset(dataset_dir, res, batch_size, num_channels=3, dimensionality=3, img_ext='jpg'):
 #     with tf.device('cpu:0'):
 #         dataset = tf.data.Dataset.list_files(os.path.join(dataset_dir, '*.'+img_ext))
-#         dataset = dataset.map(lambda x: load_img(x, res=res, num_channels=num_channels), num_parallel_calls=tf.data.experimental.AUTOTUNE)
-#         dataset = dataset.shuffle(1000)
+#         dataset = dataset.map(lambda x: load_img(x, res=res, num_channels=num_channels), 
+#             num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+#         dataset = dataset.shuffle(200)
 #         dataset = dataset.batch(batch_size, drop_remainder=True)
 #         dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
 #         return dataset
 
-# def get_tf_record_dataset(tf_records_file, res, batch_size):
-#     pass
-
-
-# def prepare_mri_tf_record_dataset(dataset_dir):
-#     import nibabel as nib
+def get_dataset(dataset, res, batch_size, dimensionality):
+    with tf.device('cpu:0'):
+        dataset = tf.data.TFRecordDataset(dataset)
+        dataset = dataset.map(lambda x: parse_image(x, target_res=res, dimensionality=dimensionality), 
+                    num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        dataset = dataset.shuffle(200)
+        dataset = dataset.batch(batch_size, drop_remainder=True)
+        dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
+        return dataset
