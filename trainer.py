@@ -153,7 +153,7 @@ class PGGAN(tf.Module):
                     w_real_loss = losses.wasserstein_loss(1, reals_pred, reduction=False)
                     w_fake_loss = losses.wasserstein_loss(-1, fakes_pred, reduction=False) 
 
-                    average_samples = utils.random_weight_sample(reals, fakes)
+                    average_samples = utils.random_weight_sample(reals, fakes, self.dimensionality)
                     average_pred = self.train_discriminator([average_samples, alpha])
 
                     gp_loss = losses.gradient_penalty_loss(average_pred, average_samples, weight=10, reduction=False)

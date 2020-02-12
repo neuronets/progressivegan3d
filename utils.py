@@ -11,7 +11,7 @@ def adjust_dynamic_range(data, drange_in, drange_out):
         data = data * scale + bias
     return data
 
-def random_weight_sample(reals, fakes, dimensionality=2):
+def random_weight_sample(reals, fakes, dimensionality):
     weight_shape = (tf.shape(reals)[0],) + (1,)+(1,)*dimensionality
     weight = tf.random.uniform(weight_shape, minval=0, maxval=1)
     return (weight * reals) + ((1 - weight) * fakes)

@@ -25,8 +25,12 @@ def prepare_2d_tf_record_dataset(dataset_dir, tf_record_filename):
 
     tf_record_writer = tf.io.TFRecordWriter(tf_record_filename)
 
-    for f in glob.glob(os.path.join(dataset_dir, '*.jpg')):
-        print(f)
+    img_filenames = glob.glob(os.path.join(dataset_dir, '*.jpg'))
+
+    n_images = len(img_filenames)
+
+    for e, f in enumerate(img_filenames):
+        print('{} / {} images done'.format(e, n_images))
         img = Image.open(f)
 
         # if num_channels==1:
@@ -45,8 +49,12 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_filename):
 
     tf_record_writer = tf.io.TFRecordWriter(tf_record_filename)
 
-    for f in glob.glob(os.path.join(dataset_dir, '*.nii.gz')):
-        print(f)
+    img_filenames = glob.glob(os.path.join(dataset_dir, '*.nii.gz'))
+
+    n_images = len(img_filenames)
+
+    for e, f in enumerate(img_filenames):
+        print('{} / {} images done'.format(e, n_images))
 
         img = nib.load(f)
         img_data = img.get_fdata().astype(np.uint8)
