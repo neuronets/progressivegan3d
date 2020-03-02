@@ -30,9 +30,24 @@ python main.py train
     --gpus '/gpu:0' '/gpu:1' '/gpu:2' '/gpu:3' 
 ```
 
+Check `opts.py` for more parameters to configure for training
+
 ## Inference
 
 Coming soon .. 
+
+## Run Tests
+
+```
+python main.py test 
+    --test_name [interpolation | nearest_neighbor]
+    --model_file path/to/model/file
+    --save_dir path/to/save/results
+    --latent_size latent_size
+    --dimensionality 2/3 
+```
+
+Check `opts.py` for more parameters to configure for specific tests
 
 ## Sample Results
 

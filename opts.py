@@ -7,8 +7,9 @@ class Opts:
     def __init__(self):
         self.parser = argparse.ArgumentParser()
 
-        self.subparsers = self.parser.add_subparsers(help='prepare | train | generate', dest='task')
+        self.subparsers = self.parser.add_subparsers(help='prepare | train | generate | test', dest='task')
 
+        # Prepare Task
         self.parser_prepare = self.subparsers.add_parser('prepare', help='Prepare tf records dataset')
 
         self.parser_prepare.add_argument('--dataset_dir', required=True)
@@ -42,20 +43,35 @@ class Opts:
         self.parser_train.add_argument('--d_fmap_base', default=2048, type=int, help='Discriminator fmap base')
         self.parser_train.add_argument('--g_fmap_base', default=2048, type=int, help='Generator fmap base')
 
+        # Test Task
+        self.parser_test = self.subparsers.add_parser('test', help='Tests to run on generator')
+
+        self.parser_test.add_argument('--test_name', required=True, help='Current one of [interpolation | nearest_neighbor]')
+        self.parser_test.add_argument('--model_file', required=True, help='Model file to saved generator h5 model')
+        self.parser_test.add_argument('--save_dir', required=True, help='Directory to save test results')
+        self.parser_test.add_argument('--tf_records_file', help='Dataset to check against for nearest_neighbor test')
+        self.parser_test.add_argument('--latent_size', default=1024, type=int, help='Latent size for generator')
+        self.parser_test.add_argument('--resolution', default=8, type=int)
+        self.parser_test.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of models (2, 3)')
+        self.parser_test.add_argument('--n_interpolations', default=10, type=int, help='Number of interpolations for interpolationtest')
+
 
     def parse(self):
-        opt = self.parser.parse_args()
+        config = self.parser.parse_args()
 
-        if opt.task=='train':
+        if config.task=='train':
 
-            if len(opt.gpus)>1:
-                opt.strategy = tf.distribute.MirroredStrategy(devices=opt.gpus)
+            if len(config.gpus)>1:
+                config.strategy = tf.distribute.MirroredStrategy(devices=config.gpus)
             else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = str(opt.gpus[0][-1])
-                opt.gpus = '/gpu:0'
-                opt.strategy = None
+                os.environ["CUDA_VISIBLE_DEVICES"] = int(config.gpus[0][-1])
+                config.gpus = '/gpu:0'
+                config.strategy = None
 
-            opt.img_ext = 'jpg' if opt.dimensionality == 2 else 'nii.gz'
-            opt.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 1, 256: 1}
+            config.img_ext = 'jpg' if config.dimensionality == 2 else 'nii.gz'
+            config.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 1, 256: 1} # per gpu
 
-        return opt
+            for res, batch_size in config.resolution_batch_size.items():
+                config.resolution_batch_size[res] = batch_size * len(config.gpus)
+
+        return config

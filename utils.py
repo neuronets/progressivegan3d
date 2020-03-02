@@ -61,18 +61,6 @@ def parse_image(record, target_res, dimensionality):
     else:
         return parse_3d_image(record, target_res)
 
-
-# def get_dataset(dataset_dir, res, batch_size, num_channels=3, dimensionality=3, img_ext='jpg'):
-#     with tf.device('cpu:0'):
-#         dataset = tf.data.Dataset.list_files(os.path.join(dataset_dir, '*.'+img_ext))
-#         dataset = dataset.map(lambda x: load_img(x, res=res, num_channels=num_channels), 
-#             num_parallel_calls=tf.data.experimental.AUTOTUNE)
-
-#         dataset = dataset.shuffle(200)
-#         dataset = dataset.batch(batch_size, drop_remainder=True)
-#         dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
-#         return dataset
-
 def get_dataset(dataset, res, batch_size, dimensionality):
     with tf.device('cpu:0'):
         dataset = tf.data.TFRecordDataset(dataset)
@@ -82,3 +70,10 @@ def get_dataset(dataset, res, batch_size, dimensionality):
         dataset = dataset.batch(batch_size, drop_remainder=True)
         dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
         return dataset
+
+def save_generated_mri(generated, filename, dynamic_range=[-1, 1]):
+    generated = adjust_dynamic_range(generated, dynamic_range, [0.0, 255.0])
+    generated = tf.clip_by_value(generated, 0.0, 255.0)
+    img_arr = np.squeeze(np.array(generated)).astype(np.uint8)
+    mri = nib.Nifti1Image(img_arr, np.eye(4))
+    nib.save(mri, filename)

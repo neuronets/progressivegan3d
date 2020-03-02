@@ -4,19 +4,26 @@ import tensorflow as tf
 from opts import Opts
 from trainer import PGGAN
 import dataset
+import tests
 
 
-def main(opts):
+def main(config):
 
-    if opts.task == 'prepare':
-        dataset.prepare_tf_record_dataset(opts.dataset_dir, opts.save_path, opts.dimensionality)
+    if config.task == 'prepare':
+        dataset.prepare_tf_record_dataset(
+            dataset_dir=config.dataset_dir, 
+            save_path=config.save_path, 
+            dimensionaltiy=config.dimensionality)
 
-    elif opts.task=='train':
-        pggan = PGGAN(opts)
+    elif config.task == 'train':
+        pggan = PGGAN(config)
         pggan.train()
+
+    elif config.task == 'test':
+        tests.do_test(config)
 
 
 if __name__ == '__main__':
     opts = Opts()
-    opts = opts.parse()
-    main(opts)
+    config = opts.parse()
+    main(config)
