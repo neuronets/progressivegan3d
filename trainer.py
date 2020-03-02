@@ -1,5 +1,6 @@
-import os
+from pathlib import Path
 from functools import partial
+
 import numpy as np
 from PIL import Image
 import tensorflow as tf
@@ -11,40 +12,41 @@ import losses
 
 class PGGAN(tf.Module):
 
-    def __init__(self, opts):
+    def __init__(self, config):
         
         super(PGGAN, self).__init__()
 
-        self.dataset = opts.dataset
-        self.latent_size = opts.latent_size
-        self.num_classes = opts.num_classes
-        self.dimensionality = opts.dimensionality
-        self.num_channels = opts.num_channels
-        self.learning_rate = opts.lr
+        self.dataset = config.dataset
+        self.latent_size = config.latent_size
+        self.num_classes = config.num_classes
+        self.dimensionality = config.dimensionality
+        self.num_channels = config.num_channels
+        self.learning_rate = config.lr
 
-        self.d_repeats = opts.d_repeats
-        self.iters_per_resolution = opts.kiters_per_resolution*1000
-        self.iters_per_transition = opts.kiters_per_transition*1000
-        self.start_resolution = opts.start_resolution
-        self.target_resolution = opts.target_resolution
-        self.resolution_batch_size = opts.resolution_batch_size
+        self.d_repeats = config.d_repeats
+        self.iters_per_resolution = config.kiters_per_resolution*1000
+        self.iters_per_transition = config.kiters_per_transition*1000
+        self.start_resolution = config.start_resolution
+        self.target_resolution = config.target_resolution
+        self.resolution_batch_size = config.resolution_batch_size
 
-        self.img_ext = opts.img_ext
+        self.img_ext = config.img_ext
 
         self.generator = networks.Generator(self.latent_size, dimensionality=self.dimensionality, 
-            num_channels=self.num_channels, fmap_base=opts.g_fmap_base)
+            num_channels=self.num_channels, fmap_base=config.g_fmap_base)
         self.discriminator = networks.Discriminator(self.num_classes, dimensionality=self.dimensionality, 
-            num_channels=self.num_channels, fmap_base=opts.d_fmap_base)
+            num_channels=self.num_channels, fmap_base=config.d_fmap_base)
 
-        self.run_id = opts.run_id
-        self.generated_dir = os.path.join(opts.run_id, opts.generated_dir)
-        self.model_dir = os.path.join(opts.run_id, opts.model_dir)
+        self.run_id = Path(config.run_id)
+        self.generated_dir = self.run_id.joinpath(config.generated_dir)
+        self.model_dir = self.run_id.joinpath(config.model_dir)
+        self.log_dir = self.run_id.joinpath(config.log_dir)
 
-        os.makedirs(self.run_id, exist_ok=True)
-        os.makedirs(self.generated_dir, exist_ok=True)
-        os.makedirs(self.model_dir, exist_ok=True)
+        self.run_id.mkdir(exist_ok=True)
+        self.generated_dir.mkdir(exist_ok=True)
+        self.model_dir.mkdir(exist_ok=True)
 
-        self.train_summary_writer = tf.summary.create_file_writer(os.path.join(self.run_id, opts.log_dir))
+        self.train_summary_writer = tf.summary.create_file_writer(str(self.log_dir))
 
         current_resolution = 2
         self.add_resolution()
@@ -53,14 +55,14 @@ class PGGAN(tf.Module):
             self.add_resolution()
             current_resolution+=1
 
-        self.strategy = opts.strategy
+        self.strategy = config.strategy
         if self.strategy is not None:
             with self.strategy.scope():
 
                 self.generator = networks.Generator(self.latent_size, dimensionality=self.dimensionality, 
-                    num_channels=self.num_channels, fmap_base=opts.g_fmap_base)
+                    num_channels=self.num_channels, fmap_base=config.g_fmap_base)
                 self.discriminator = networks.Discriminator(self.num_classes, dimensionality=self.dimensionality, 
-                    num_channels=self.num_channels, fmap_base=opts.d_fmap_base)
+                    num_channels=self.num_channels, fmap_base=config.d_fmap_base)
 
                 current_resolution = 2
                 self.add_resolution()
@@ -233,7 +235,6 @@ class PGGAN(tf.Module):
             alpha = tf.constant(alpha, tf.float32)
 
             i = 0
-            # with self.strategy.scope():
 
             for reals in dataset:
                 iters_done+=batch_size
@@ -264,9 +265,9 @@ class PGGAN(tf.Module):
             if phase == 'Resolution':
                 self.generate_samples_3d(10, current_resolution)
 
-            with self.train_summary_writer.as_default():
-                tf.summary.scalar('G Loss {} {}'.format(phase, current_resolution), g_loss_tracker.result(), step=iters_done)
-                tf.summary.scalar('D Loss {} {}'.format(phase, current_resolution), d_loss_tracker.result(), step=iters_done)
+            with self.train_summary_writer.as_default(), tf.name_scope(phase) as scope:
+                tf.summary.scalar('G Loss {}'.format(current_resolution), g_loss_tracker.result(), step=iters_done)
+                tf.summary.scalar('D Loss {}'.format(current_resolution), d_loss_tracker.result(), step=iters_done)
 
         g_loss_tracker.reset_states()
         d_loss_tracker.reset_states()
@@ -296,8 +297,8 @@ class PGGAN(tf.Module):
         raise NotImplementedError
 
     def save_models(self, current_resolution):
-        self.train_generator.save(os.path.join(self.model_dir, 'g_{}.h5'.format(current_resolution)))
-        self.train_discriminator.save(os.path.join(self.model_dir, 'd_{}.h5'.format(current_resolution)))
+        self.train_generator.save(str(self.model_dir.joinpath('g_{}.h5'.format(current_resolution))))
+        self.train_discriminator.save(str(self.model_dir.joinpath('g_{}.h5'.format(current_resolution))))
 
     def generate_samples(self, num_samples, current_resolution):
         for i in range(num_samples):
@@ -307,7 +308,7 @@ class PGGAN(tf.Module):
             fakes = tf.clip_by_value(fakes, 0.0, 255.0)
             img_arr = np.squeeze(np.array(fakes[0])).astype(np.uint8)
             im = Image.fromarray(img_arr, 'L')
-            im.save(os.path.join(self.generated_dir, 'res_{}_{}.jpg').format(current_resolution, i))
+            im.save(str(self.generated_dir.joinpath('res_{}_{}.jpg').format(current_resolution, i)))
 
     def generate_samples_3d(self, num_samples, current_resolution):
         for i in range(num_samples):
@@ -317,7 +318,7 @@ class PGGAN(tf.Module):
             fakes = tf.clip_by_value(fakes, 0.0, 255.0)
             img_arr = np.squeeze(np.array(fakes[0])).astype(np.uint8)
             mri = nib.Nifti1Image(img_arr, np.eye(4))
-            nib.save(mri, os.path.join(self.generated_dir, 'res_{}_{}.nii.gz').format(current_resolution, i))
+            nib.save(mri, str(self.generated_dir.joinpath('res_{}_{}.jpg').format(current_resolution, i)))
 
 
 

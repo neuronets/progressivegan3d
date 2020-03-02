@@ -1,7 +1,7 @@
-import glob
-import os
-import numpy as np
+from pathlib import Path
+import time
 
+import numpy as np
 import tensorflow as tf
 from PIL import Image
 import nibabel as nib
@@ -25,7 +25,8 @@ def prepare_2d_tf_record_dataset(dataset_dir, tf_record_filename):
 
     tf_record_writer = tf.io.TFRecordWriter(tf_record_filename)
 
-    img_filenames = glob.glob(os.path.join(dataset_dir, '*.jpg'))
+    dataset_dir = Path(dataset_dir)
+    img_filenames = dataset_dir.glob('*.jpg')
 
     n_images = len(img_filenames)
 
@@ -33,11 +34,9 @@ def prepare_2d_tf_record_dataset(dataset_dir, tf_record_filename):
         print('{} / {} images done'.format(e, n_images))
         img = Image.open(f)
 
-        # if num_channels==1:
-        #     img = img.convert('LA')
-
         img = np.array(img).astype(np.uint8)
         img_data = img.ravel().tostring()
+        # img_data = tf.image.encode_png(img).tostring()
         img_shape = img.shape
         if len(img_shape) == 2:
             img_shape += (1,)
@@ -49,19 +48,24 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_filename):
 
     tf_record_writer = tf.io.TFRecordWriter(tf_record_filename)
 
-    img_filenames = glob.glob(os.path.join(dataset_dir, '*.nii.gz'))
+    dataset_dir = Path(dataset_dir)
+    img_filenames = dataset_dir.glob('*orig*.nii.gz')
 
     n_images = len(img_filenames)
 
+    print('{} images found'.format(n_images))
+    start = time.time()
     for e, f in enumerate(img_filenames):
         print('{} / {} images done'.format(e, n_images))
 
         img = nib.load(f)
-        img_data = img.get_fdata().astype(np.uint8)
+        # img_data = img.get_fdata().astype(np.uint8)
+        img_data = img.get_fdata()
+        img_data = (255 * (img_data - np.min(img_data)) / (np.max(img_data) - np.min(img_data)) ).astype(np.uint8)
         img_shape = np.array(img_data.shape).astype(np.int64)
         img_data = img_data.ravel().tostring()
-
         tf_record_writer.write(serialize_example(img_data, img_shape))
+    print('Time taken : {}'.format(time.time()-start))
 
 
 def prepare_tf_record_dataset(dataset_dir, save_path, dimensionality):
