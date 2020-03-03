@@ -59,6 +59,7 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_filename):
         print('{} / {} images done'.format(e, n_images))
 
         img = nib.load(f)
+        img = nib.as_closest_canonical(img)
         # img_data = img.get_fdata().astype(np.uint8)
         img_data = img.get_fdata()
         img_data = (255 * (img_data - np.min(img_data)) / (np.max(img_data) - np.min(img_data)) ).astype(np.uint8)
