@@ -13,7 +13,7 @@ The code currently supports both 2D and 3D image generation.
 ```
 python main.py prepare
     --dataset path/to/data
-    --save_path path/to/save/tfrecords
+    --tf_record_save_dir path/to/save/tfrecords
     --dimensionality 2/3
 ```
 
