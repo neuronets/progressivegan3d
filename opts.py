@@ -10,23 +10,25 @@ class Opts:
         self.subparsers = self.parser.add_subparsers(help='prepare | train | generate | test', dest='task')
 
         # Prepare Task
-        self.parser_prepare = self.subparsers.add_parser('prepare', help='Prepare tf records dataset')
+        self.parser_prepare = self.subparsers.add_parser('prepare', help='Prepare tf record shards for dataset')
 
-        self.parser_prepare.add_argument('--dataset_dir', required=True)
-        self.parser_prepare.add_argument('--save_path', required=True)
-        self.parser_prepare.add_argument('--dimensionality', default=2, type=int)
+        self.parser_prepare.add_argument('--dataset_dir', required=True, help='Path to dataset')
+        self.parser_prepare.add_argument('--tf_record_save_dir', required=True, help='Path to save tfrecord shards')
+        self.parser_prepare.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of data [2|3]')
+        self.parser_prepare.add_argument('--glob_ext', default='*.nii.gz', help='Extension of files for globbing')
+        self.parser_prepare.add_argument('--n_img_per_shard', default=500, type=int, help='No. of images per shard')
 
         # Train Task
         self.parser_train = self.subparsers.add_parser('train', help='Train the progressive GAN')
 
-        self.parser_train.add_argument('--dataset', required=True, help='Training dataset')
+        self.parser_train.add_argument('--tf_record_dir', required=True, help='Training tfrecord directory with shards')
         self.parser_train.add_argument('--run_id', default='1', help='Run ID to save data')
         self.parser_train.add_argument('--generated_dir', default='generated', help='Path in Run ID to store generated images')
         self.parser_train.add_argument('--model_dir', default='saved_models', help='Path in Run ID to store saved models')
         self.parser_train.add_argument('--log_dir', default='logs', help='Path in Run ID to store logs')
 
-        self.parser_train.add_argument('--dimensionality', default=2, type=int, help='Dimensionality of models (2, 3)')
-        self.parser_train.add_argument('--latent_size', default=256, type=int, help='Latent size for generator')
+        self.parser_train.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of models [2|3]')
+        self.parser_train.add_argument('--latent_size', default=1024, type=int, help='Latent size for generator')
         self.parser_train.add_argument('--num_channels', default=1, type=int, help='Number of channels in images')
         self.parser_train.add_argument('--num_classes', default=1, type=int, help='Number of classes (only 1 supported')
 
@@ -49,10 +51,10 @@ class Opts:
         self.parser_test.add_argument('--test_name', required=True, help='Current one of [interpolation | nearest_neighbor]')
         self.parser_test.add_argument('--model_file', required=True, help='Model file to saved generator h5 model')
         self.parser_test.add_argument('--save_dir', required=True, help='Directory to save test results')
-        self.parser_test.add_argument('--tf_records_file', help='Dataset to check against for nearest_neighbor test')
+        self.parser_test.add_argument('--tf_record_dir', help='Dataset to check against for nearest_neighbor test')
         self.parser_test.add_argument('--latent_size', default=1024, type=int, help='Latent size for generator')
         self.parser_test.add_argument('--resolution', default=8, type=int)
-        self.parser_test.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of models (2, 3)')
+        self.parser_test.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of model [2|3]')
         self.parser_test.add_argument('--n_interpolations', default=10, type=int, help='Number of interpolations for interpolationtest')
 
 
@@ -64,14 +66,19 @@ class Opts:
             if len(config.gpus)>1:
                 config.strategy = tf.distribute.MirroredStrategy(devices=config.gpus)
             else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = int(config.gpus[0][-1])
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(config.gpus[0][-1])
                 config.gpus = '/gpu:0'
                 config.strategy = None
 
             config.img_ext = 'jpg' if config.dimensionality == 2 else 'nii.gz'
             config.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 1, 256: 1} # per gpu
 
+            config.iters_per_resolution = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+
             for res, batch_size in config.resolution_batch_size.items():
                 config.resolution_batch_size[res] = batch_size * len(config.gpus)
+
+            # policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+            # tf.keras.mixed_precision.experimental.set_policy(policy)
 
         return config

@@ -61,9 +61,12 @@ def parse_image(record, target_res, dimensionality):
     else:
         return parse_3d_image(record, target_res)
 
-def get_dataset(dataset, res, batch_size, dimensionality):
+def get_dataset(tf_record_dir, res, batch_size, dimensionality):
     with tf.device('cpu:0'):
-        dataset = tf.data.TFRecordDataset(dataset)
+        dataset = tf.data.Dataset.list_files(os.path.join(tf_record_dir, '*.tfrecord'))
+        dataset = dataset.shuffle(50)
+        dataset = dataset.interleave(lambda file: tf.data.TFRecordDataset(file, compression_type='GZIP'),
+                         cycle_length=tf.data.experimental.AUTOTUNE, block_length=4)
         dataset = dataset.map(lambda x: parse_image(x, target_res=res, dimensionality=dimensionality), 
                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
         dataset = dataset.shuffle(200)
