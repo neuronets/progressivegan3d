@@ -12,8 +12,10 @@ def main(config):
     if config.task == 'prepare':
         dataset.prepare_tf_record_dataset(
             dataset_dir=config.dataset_dir, 
-            save_path=config.save_path, 
-            dimensionaltiy=config.dimensionality)
+            tf_record_save_dir=config.tf_record_save_dir, 
+            dimensionality=config.dimensionality,
+            glob_ext=config.glob_ext,
+            n_img_per_shard=config.n_img_per_shard)
 
     elif config.task == 'train':
         pggan = PGGAN(config)

@@ -1,9 +1,13 @@
 from pathlib import Path
 from functools import partial
+import time
 
 import numpy as np
 from PIL import Image
 import tensorflow as tf
+# policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
+# tf.keras.mixed_precision.experimental.set_policy(policy)
+
 import nibabel as nib
 
 import networks
@@ -16,7 +20,7 @@ class PGGAN(tf.Module):
         
         super(PGGAN, self).__init__()
 
-        self.dataset = config.dataset
+        self.tf_record_dir = config.tf_record_dir
         self.latent_size = config.latent_size
         self.num_classes = config.num_classes
         self.dimensionality = config.dimensionality
@@ -83,8 +87,11 @@ class PGGAN(tf.Module):
                 fakes_pred = self.train_discriminator([fakes, alpha])
 
                 g_loss = losses.wasserstein_loss(1, fakes_pred) 
+                # scaled_loss = self.g_optimizer.get_scaled_loss(g_loss)
 
             g_gradients = tape.gradient(g_loss, self.train_generator.trainable_variables)
+            # scaled_gradients = tape.gradient(scaled_loss, self.train_generator.trainable_variables)
+            # g_gradients = self.g_optimizer.get_unscaled_gradients(scaled_gradients)
             self.g_optimizer.apply_gradients(zip(g_gradients, self.train_generator.trainable_variables))
             return g_loss
         return g_train_step
@@ -112,8 +119,11 @@ class PGGAN(tf.Module):
                 epsilon_loss = losses.epsilon_penalty_loss(reals_pred, weight=0.001)
 
                 d_loss = w_real_loss + w_fake_loss + gp_loss + epsilon_loss
+                # scaled_loss = self.d_optimizer.get_scaled_loss(d_loss)
 
             d_gradients = tape.gradient(d_loss, self.train_discriminator.trainable_variables)
+            # scaled_gradients = tape.gradient(scaled_loss, self.train_discriminator.trainable_variables)
+            # d_gradients = self.d_optimizer.get_unscaled_gradients(scaled_gradients)
             self.d_optimizer.apply_gradients(zip(d_gradients, self.train_discriminator.trainable_variables))
 
             return d_loss
@@ -189,7 +199,7 @@ class PGGAN(tf.Module):
 
     def get_current_dataset(self, current_resolution):
         batch_size = self.get_current_batch_size(current_resolution)
-        dataset = utils.get_dataset(self.dataset, current_resolution, batch_size, self.dimensionality)
+        dataset = utils.get_dataset(self.tf_record_dir, current_resolution, batch_size, self.dimensionality)
         return dataset
 
     def get_current_alpha(self, iters_done):
@@ -197,12 +207,17 @@ class PGGAN(tf.Module):
 
     def run_phase(self, phase, current_resolution):
 
+        start = time.time()
+
         dataset = self.get_current_dataset(current_resolution)
         g_train_step = self.get_g_train_step()
         d_train_step = self.get_d_train_step()
 
         self.d_optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate, beta_1=0.0, beta_2=0.99, epsilon=1e-8)
+        # self.d_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(self.d_optimizer , loss_scale='dynamic')
+
         self.g_optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate, beta_1=0.0, beta_2=0.99, epsilon=1e-8)
+        # self.g_optimizer = tf.keras.mixed_precision.experimental.LossScaleOptimizer(self.g_optimizer, loss_scale='dynamic')
 
         if self.strategy is not None:
             with self.strategy.scope():
@@ -223,7 +238,7 @@ class PGGAN(tf.Module):
         d_loss_tracker = tf.keras.metrics.Mean()
 
         iters_done = 0
-        prog_bar = tf.keras.utils.Progbar(self.iters_per_transition, 
+        prog_bar = tf.keras.utils.Progbar(self.iters_per_transition, verbose = 1,
                 stateful_metrics = ['Res', 'D Loss', 'G Loss'])
 
         while iters_done < iters_total:
@@ -274,6 +289,7 @@ class PGGAN(tf.Module):
 
         self.save_models(current_resolution)
         print()
+        print('Time taken : {}'.format(time.time()-start))
 
     def train(self):
 
@@ -308,7 +324,7 @@ class PGGAN(tf.Module):
             fakes = tf.clip_by_value(fakes, 0.0, 255.0)
             img_arr = np.squeeze(np.array(fakes[0])).astype(np.uint8)
             im = Image.fromarray(img_arr, 'L')
-            im.save(str(self.generated_dir.joinpath('res_{}_{}.jpg').format(current_resolution, i)))
+            im.save(str(self.generated_dir.joinpath('res_{}_{}.jpg'.format(current_resolution, i))))
 
     def generate_samples_3d(self, num_samples, current_resolution):
         for i in range(num_samples):
@@ -318,7 +334,7 @@ class PGGAN(tf.Module):
             fakes = tf.clip_by_value(fakes, 0.0, 255.0)
             img_arr = np.squeeze(np.array(fakes[0])).astype(np.uint8)
             mri = nib.Nifti1Image(img_arr, np.eye(4))
-            nib.save(mri, str(self.generated_dir.joinpath('res_{}_{}.jpg').format(current_resolution, i)))
+            nib.save(mri, str(self.generated_dir.joinpath('res_{}_{}.nii.gz'.format(current_resolution, i))))
 
 
 
