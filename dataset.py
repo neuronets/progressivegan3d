@@ -52,8 +52,8 @@ def prepare_2d_tf_record_dataset(dataset_dir, tf_record_filename, glob_ext, n_im
                 img_data = img.ravel().tostring()
                 img_data = tf.image.encode_png(img).tostring()
                 img_shape = img.shape
-                if len(img_shape) == 2:
-                    img_shape += (1,)
+                if len(img_shape)==3:
+                    img_shape = np.append(img_shape, 1)
 
                 tf_record_writer.write(serialize_example(img_data, img_shape))
 
@@ -96,6 +96,9 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_im
                 img_data = img.get_fdata()
                 img_data = (255 * (img_data - np.min(img_data)) / (np.max(img_data) - np.min(img_data)) ).astype(np.uint8)
                 img_shape = np.array(img_data.shape).astype(np.int64)
+                if len(img_shape)==3:
+                    img_shape = np.append(img_shape, 1)
+
                 img_data = img_data.ravel().tostring()
 
                 tf_record_writer.write(serialize_example(img_data, img_shape))

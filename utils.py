@@ -33,7 +33,7 @@ def parse_2d_image(record, target_res):
 def parse_3d_image(record, target_res):
     image_feature_description = {
         'img': tf.io.FixedLenFeature([], tf.string),
-        'shape': tf.io.FixedLenFeature([3], tf.int64)
+        'shape': tf.io.FixedLenFeature([4], tf.int64)
     }
     data = tf.io.parse_single_example(record, image_feature_description)
     img = data['img']
@@ -46,11 +46,10 @@ def parse_3d_image(record, target_res):
     full_res = tf.cast(tf.math.log(shape[0])/tf.math.log(2.0), tf.int32)
 
     for i in range(full_res-target_res):
-        img = img[0::2,0::2,0::2]+img[0::2,0::2,1::2]+img[0::2,1::2,0::2]+img[0::2,1::2,1::2] \
-                        +img[1::2,0::2,0::2]+img[1::2,0::2,1::2]+img[1::2,1::2,0::2]+img[1::2,1::2,1::2]
+        img = img[0::2,0::2,0::2,:]+img[0::2,0::2,1::2,:]+img[0::2,1::2,0::2,:]+img[0::2,1::2,1::2,:] \
+                        +img[1::2,0::2,0::2,:]+img[1::2,0::2,1::2,:]+img[1::2,1::2,0::2,:]+img[1::2,1::2,1::2,:]
         img = (img) * 0.125
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
-    img = tf.expand_dims(img, axis=-1)
 
     return img
 
@@ -64,7 +63,7 @@ def parse_image(record, target_res, dimensionality):
 def get_dataset(tf_record_dir, res, batch_size, dimensionality):
     with tf.device('cpu:0'):
         dataset = tf.data.Dataset.list_files(os.path.join(tf_record_dir, '*.tfrecord'))
-        dataset = dataset.shuffle(50)
+        dataset = dataset.shuffle(20)
         dataset = dataset.interleave(lambda file: tf.data.TFRecordDataset(file, compression_type='GZIP'),
                          cycle_length=tf.data.experimental.AUTOTUNE, block_length=4)
         dataset = dataset.map(lambda x: parse_image(x, target_res=res, dimensionality=dimensionality), 
