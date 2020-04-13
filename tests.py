@@ -11,7 +11,7 @@ def interpolation_test(model_file, save_dir, latent_size, n_interpolations, dime
     print('Interpolation Test ..')
 
     save_dir = Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=False)
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     latents_1 = np.random.normal(size=(1, latent_size))
     latents_2 = np.random.normal(size=(1, latent_size))
@@ -37,7 +37,7 @@ def nearest_neighbor_test(model_file, tf_records_file, save_dir, latent_size, re
     print('Nearest Neighbor Test ..')
 
     save_dir = Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=False)
+    save_dir.mkdir(parents=True, exist_ok=True)
 
     latents = np.random.normal(size=(1, 1024))
 
