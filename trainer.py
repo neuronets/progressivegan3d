@@ -5,6 +5,8 @@ import time
 import numpy as np
 from PIL import Image
 import tensorflow as tf
+
+# tf.debugging.set_log_device_placement(True)
 # policy = tf.keras.mixed_precision.experimental.Policy('mixed_float16')
 # tf.keras.mixed_precision.experimental.set_policy(policy)
 
@@ -22,14 +24,16 @@ class PGGAN(tf.Module):
 
         self.tf_record_dir = config.tf_record_dir
         self.latent_size = config.latent_size
+        self.label_size = config.label_size
         self.num_classes = config.num_classes
         self.dimensionality = config.dimensionality
         self.num_channels = config.num_channels
         self.learning_rate = config.lr
+        self.gpus = config.gpus
 
         self.d_repeats = config.d_repeats
-        self.iters_per_resolution = config.kiters_per_resolution*1000
-        self.iters_per_transition = config.kiters_per_transition*1000
+        self.iters_per_transition = {k: v*1000 for k, v in config.kiters_per_transition.items()}
+        self.iters_per_resolution = {k: v*1000 for k, v in config.kiters_per_resolution.items()}
         self.start_resolution = config.start_resolution
         self.target_resolution = config.target_resolution
         self.resolution_batch_size = config.resolution_batch_size
@@ -75,6 +79,7 @@ class PGGAN(tf.Module):
                     self.add_resolution()
                     current_resolution+=1
 
+
     # TODO: Write decorator
     def get_g_train_step(self):
         '''
@@ -88,6 +93,9 @@ class PGGAN(tf.Module):
 
                 g_loss = losses.wasserstein_loss(1, fakes_pred) 
                 # scaled_loss = self.g_optimizer.get_scaled_loss(g_loss)
+
+                if self.label_size>0:
+                    g_loss += losses.labels_loss(labels, labels_pred)
 
             g_gradients = tape.gradient(g_loss, self.train_generator.trainable_variables)
             # scaled_gradients = tape.gradient(scaled_loss, self.train_generator.trainable_variables)
@@ -121,6 +129,10 @@ class PGGAN(tf.Module):
                 d_loss = w_real_loss + w_fake_loss + gp_loss + epsilon_loss
                 # scaled_loss = self.d_optimizer.get_scaled_loss(d_loss)
 
+                if self.label_size>0:
+                    d_loss += losses.labels_loss(labels, labels_pred_fake, weight=1.0)
+                    d_loss += losses.labels_loss(labels, labels_pred_real, weight=1.0)
+
             d_gradients = tape.gradient(d_loss, self.train_discriminator.trainable_variables)
             # scaled_gradients = tape.gradient(scaled_loss, self.train_discriminator.trainable_variables)
             # d_gradients = self.d_optimizer.get_unscaled_gradients(scaled_gradients)
@@ -134,11 +146,15 @@ class PGGAN(tf.Module):
         def g_train_step(latents, alpha, global_batch_size=1):
             def step_fn(latents, alpha):
                 with tf.GradientTape() as tape:
-                    latents = tf.random.normal((global_batch_size//4, self.latent_size))
+                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
 
                     fakes = self.train_generator([latents, alpha])
                     fakes_pred = self.train_discriminator([fakes, alpha])
+
                     g_loss = losses.wasserstein_loss(1, fakes_pred, reduction=False) 
+                    if self.label_size>0:
+                        g_loss += losses.labels_loss(labels, labels_pred, weight=1.0)
+
                     g_gradient_loss = tf.reduce_sum(g_loss) * 1/global_batch_size
 
                 g_gradients = tape.gradient(g_gradient_loss, self.train_generator.trainable_variables)
@@ -156,9 +172,9 @@ class PGGAN(tf.Module):
         def d_train_step(latents, reals, alpha, global_batch_size=1):
             def step_fn(latents, reals, alpha):
                 with tf.GradientTape() as tape:
-                    latents = tf.random.normal((global_batch_size//4, self.latent_size))
-                    fakes = self.train_generator([latents, alpha])
+                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
 
+                    fakes = self.train_generator([latents, alpha])
                     fakes_pred = self.train_discriminator([fakes, alpha])
                     reals_pred = self.train_discriminator([reals, alpha])
 
@@ -173,6 +189,11 @@ class PGGAN(tf.Module):
                     epsilon_loss = losses.epsilon_penalty_loss(reals_pred, weight=0.001)
 
                     d_loss = w_real_loss + w_fake_loss + gp_loss + epsilon_loss
+
+                    if self.label_size>0:
+                        d_loss += losses.labels_loss(labels, labels_pred_fake, weight=1.0)
+                        d_loss += losses.labels_loss(labels, labels_pred_real, weight=1.0)
+
                     d_gradient_loss = d_loss * (1/global_batch_size)
 
                 d_gradients = tape.gradient(d_gradient_loss, self.train_discriminator.trainable_variables)
@@ -194,6 +215,7 @@ class PGGAN(tf.Module):
         self.train_generator = self.generator.get_trainable_generator()
         self.train_discriminator = self.discriminator.get_trainable_discriminator()
 
+
     def get_current_batch_size(self, current_resolution):
         return self.resolution_batch_size[2**current_resolution]
 
@@ -202,8 +224,8 @@ class PGGAN(tf.Module):
         dataset = utils.get_dataset(self.tf_record_dir, current_resolution, batch_size, self.dimensionality)
         return dataset
 
-    def get_current_alpha(self, iters_done):
-        return iters_done/self.iters_per_transition
+    def get_current_alpha(self, iters_done, iters_per_transition):
+        return iters_done/iters_per_transition
 
     def run_phase(self, phase, current_resolution):
 
@@ -228,22 +250,22 @@ class PGGAN(tf.Module):
                 self.g_optimizer = tf.keras.optimizers.Adam(learning_rate=self.learning_rate, beta_1=0.0, beta_2=0.99, epsilon=1e-8)
 
         if phase == 'Transition':
-            iters_total = self.iters_per_transition
+            iters_total = self.iters_per_transition[2**current_resolution]
             get_alpha = self.get_current_alpha
         else:
-            iters_total = self.iters_per_resolution
-            get_alpha = lambda x: 1.0
+            iters_total = self.iters_per_resolution[2**current_resolution]
+            get_alpha = lambda x, y: 1.0
 
         g_loss_tracker = tf.keras.metrics.Mean()
         d_loss_tracker = tf.keras.metrics.Mean()
 
         iters_done = 0
-        prog_bar = tf.keras.utils.Progbar(self.iters_per_transition, verbose = 1,
+        prog_bar = tf.keras.utils.Progbar(iters_total, verbose = 1,
                 stateful_metrics = ['Res', 'D Loss', 'G Loss'])
 
         while iters_done < iters_total:
 
-            alpha = get_alpha(iters_done)
+            alpha = get_alpha(iters_done, iters_total)
             batch_size = self.get_current_batch_size(current_resolution)
 
             prog_bar.add(0, [('Res', current_resolution-1+alpha)])
@@ -254,7 +276,7 @@ class PGGAN(tf.Module):
             for reals in dataset:
                 iters_done+=batch_size
 
-                if iters_done > self.iters_per_transition:
+                if iters_done > iters_total:
                     break
 
                 latents = tf.random.normal((batch_size, self.latent_size)) 
@@ -314,7 +336,7 @@ class PGGAN(tf.Module):
 
     def save_models(self, current_resolution):
         self.train_generator.save(str(self.model_dir.joinpath('g_{}.h5'.format(current_resolution))))
-        self.train_discriminator.save(str(self.model_dir.joinpath('g_{}.h5'.format(current_resolution))))
+        self.train_discriminator.save(str(self.model_dir.joinpath('d_{}.h5'.format(current_resolution))))
 
     def generate_samples(self, num_samples, current_resolution):
         for i in range(num_samples):
