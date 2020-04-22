@@ -29,11 +29,12 @@ class Opts:
 
         self.parser_train.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of models [2|3]')
         self.parser_train.add_argument('--latent_size', default=1024, type=int, help='Latent size for generator')
+        self.parser_train.add_argument('--label_size', default=0, type=int, help='Label size for conditioned generator')
         self.parser_train.add_argument('--num_channels', default=1, type=int, help='Number of channels in images')
         self.parser_train.add_argument('--num_classes', default=1, type=int, help='Number of classes (only 1 supported')
 
-        self.parser_train.add_argument('--kiters_per_transition', default=200, type=int, help='x*1000 iterations per transition')
-        self.parser_train.add_argument('--kiters_per_resolution', default=200, type=int, help='x*1000 iterations per resolution')
+        self.parser_train.add_argument('--kiters_per_transition', default=0, type=float, help='x*1000 iterations per transition, leave it zero to use resolution specific iters')
+        self.parser_train.add_argument('--kiters_per_resolution', default=0, type=float, help='x*1000 iterations per resolution, leave it zero to use resolution specific iters')
         self.parser_train.add_argument('--start_resolution', default=4, type=int, help='start resolution')
         self.parser_train.add_argument('--target_resolution', default=256, type=int, help='target resolution')
         # self.parser_train.add_argument('--resolution_batch_size')
@@ -64,16 +65,21 @@ class Opts:
         if config.task=='train':
 
             if len(config.gpus)>1:
-                config.strategy = tf.distribute.MirroredStrategy(devices=config.gpus)
+                config.strategy = tf.distribute.MirroredStrategy(devices=config.gpus)                
+
             else:
-                os.environ["CUDA_VISIBLE_DEVICES"] = str(config.gpus[0][-1])
-                config.gpus = '/gpu:0'
+                gpus = tf.config.experimental.list_physical_devices('GPU')
+                tf.config.experimental.set_visible_devices(gpus[0], 'GPU')
                 config.strategy = None
 
             config.img_ext = 'jpg' if config.dimensionality == 2 else 'nii.gz'
-            config.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 1, 256: 1} # per gpu
 
-            config.iters_per_resolution = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+            config.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 2, 256: 1} # per gpu
+
+            if config.kiters_per_transition == 0:
+                config.kiters_per_transition = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+            if config.kiters_per_resolution == 0:
+                config.kiters_per_resolution = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
 
             for res, batch_size in config.resolution_batch_size.items():
                 config.resolution_batch_size[res] = batch_size * len(config.gpus)
