@@ -19,7 +19,10 @@ def gradient_penalty_loss(average_pred, average_samples, weight=10, reduction=Tr
     if reduction:
         return tf.reduce_mean(gradient_penalty)
     else:
-        return gradient_penalty
+        return tf.reduce_mean(gradient_penalty, axis=-1)
 
 def epsilon_penalty_loss(real_pred, weight=0.001):
     return weight * tf.square(real_pred)
+
+def labels_loss(y_true, y_pred, weight=1.0):
+    return weight * tf.nn.softmax_cross_entropy_with_logits_v2(labels=y_true, logits=y_pred)

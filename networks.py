@@ -6,10 +6,11 @@ class Generator:
     '''
     Progressive Generator
     '''
-    def __init__(self, latent_size, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
+    def __init__(self, latent_size, label_size=0, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
         super(Generator, self).__init__()
 
         self.latent_size = latent_size
+        self.label_size = label_size
 
         self.fmap_base = fmap_base
         self.fmap_max = fmap_max
@@ -37,7 +38,7 @@ class Generator:
 
     def _make_generator_base(self):
 
-        latents = layers.Input(shape=[self.latent_size], name='latents')
+        latents = layers.Input(shape=[self.latent_size+self.label_size], name='latents')
         alpha = layers.Input(shape=[], dtype=tf.float32, name='g_alpha')
 
         # Latents stage
@@ -64,6 +65,8 @@ class Generator:
     def add_resolution(self):
 
         self.current_resolution += 1
+
+        # with tf.devic
 
         # Residual from input
         to_rgb_1 = self.Upsampling()(self.growing_generator.output)
@@ -95,10 +98,10 @@ class Discriminator:
     Progressive Discriminator
     '''
 
-    def __init__(self, num_classes, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
+    def __init__(self, label_size=0, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
         super(Discriminator, self).__init__()
 
-        self.num_classes = num_classes
+        self.label_size = label_size
 
         self.fmap_base = fmap_base
         self.fmap_max = fmap_max
@@ -127,7 +130,7 @@ class Discriminator:
         x = layers.Dense(self._nf(1))(x)
         x = layers.Activation(tf.nn.leaky_relu)(x)
 
-        output = layers.Dense(self.num_classes)(x)
+        output = layers.Dense(1+self.label_size)(x)
 
         return tf.keras.models.Model(inputs=[inputs], outputs=output)
 
