@@ -1,6 +1,7 @@
 import argparse
 import os
 
+import numpy as np
 import tensorflow as tf
 
 class Opts:
@@ -78,8 +79,18 @@ class Opts:
 
             if config.kiters_per_transition == 0:
                 config.kiters_per_transition = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+            else:
+                config.kiters_per_transition = {k: config.kiters_per_resolution 
+                    for k in [2**i for i in range(int(np.log2(config.target_resolution))+1)]}
+
             if config.kiters_per_resolution == 0:
                 config.kiters_per_resolution = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+            else:
+                config.kiters_per_resolution = {k: config.kiters_per_resolution 
+                    for k in [2**i for i in range(int(np.log2(config.target_resolution))+1)]}
+            
+            config.kiters_per_transition = {k: v*1000 for k, v in config.kiters_per_transition.items()}
+            config.kiters_per_resolution = {k: v*1000 for k, v in config.kiters_per_resolution.items()}
 
             for res, batch_size in config.resolution_batch_size.items():
                 config.resolution_batch_size[res] = batch_size * len(config.gpus)
