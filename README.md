@@ -17,6 +17,8 @@ python main.py prepare
     --dimensionality 2/3
 ```
 
+If label conditioning is required, the label mapping from filename for it must be added in `dataset.py`
+
 ## Run Training
 
 ```
@@ -31,6 +33,8 @@ python main.py train
 ```
 
 Check `opts.py` for more parameters to configure for training
+
+Add `--label_size x` for x labels in training
 
 ## Inference
 
