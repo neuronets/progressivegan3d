@@ -27,8 +27,8 @@ class Generator:
         self.Upsampling = getattr(layers, 'UpSampling{}D'.format(self.dimensionality))
 
     def _pixel_norm(self, epsilon=1e-8):
-        # return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
-        return layers.BatchNormalization(axis=-1)
+        return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
+        # return layers.BatchNormalization(axis=-1)
 
     def _weighted_sum(self):
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])
@@ -84,7 +84,7 @@ class Generator:
         self.train_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=[output])
 
     def get_current_resolution(self):
-        return current_resolution
+        return self.current_resolution
 
     def get_trainable_generator(self):
         return self.train_generator
@@ -132,7 +132,7 @@ class Discriminator:
 
         output = layers.Dense(1+self.label_size)(x)
 
-        return tf.keras.models.Model(inputs=[inputs], outputs=output)
+        return tf.keras.models.Model(inputs=[inputs], outputs=[output])
 
     def _make_discriminator_block(self, nf, name=''):
 
@@ -164,10 +164,13 @@ class Discriminator:
 
         lerp_input = self._weighted_sum()([from_rgb_1, from_rgb_2, alpha])
 
-        score_output = self.growing_discriminator(lerp_input)
+        output = self.growing_discriminator(lerp_input)
+
+        score_output = layers.Lambda(lambda x: x[...,0])(output)
+        label_output = layers.Lambda(lambda x: x[...,1:])(output)
 
         self.growing_discriminator = tf.keras.Sequential([d_block, self.growing_discriminator])
-        self.train_discriminator = tf.keras.models.Model(inputs=[inputs, alpha], outputs=[score_output])
+        self.train_discriminator = tf.keras.models.Model(inputs=[inputs, alpha], outputs=[score_output, label_output])
 
     def get_current_resolution(self):
         return self.current_resolution
