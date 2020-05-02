@@ -6,10 +6,11 @@ class Generator:
     '''
     Progressive Generator
     '''
-    def __init__(self, latent_size, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
+    def __init__(self, latent_size, label_size=0, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
         super(Generator, self).__init__()
 
         self.latent_size = latent_size
+        self.label_size = label_size
 
         self.fmap_base = fmap_base
         self.fmap_max = fmap_max
@@ -26,8 +27,8 @@ class Generator:
         self.Upsampling = getattr(layers, 'UpSampling{}D'.format(self.dimensionality))
 
     def _pixel_norm(self, epsilon=1e-8):
-        # return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
-        return layers.BatchNormalization(axis=-1)
+        return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
+        # return layers.BatchNormalization(axis=-1)
 
     def _weighted_sum(self):
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])
@@ -37,7 +38,7 @@ class Generator:
 
     def _make_generator_base(self):
 
-        latents = layers.Input(shape=[self.latent_size], name='latents')
+        latents = layers.Input(shape=[self.latent_size+self.label_size], name='latents')
         alpha = layers.Input(shape=[], dtype=tf.float32, name='g_alpha')
 
         # Latents stage
@@ -65,6 +66,8 @@ class Generator:
 
         self.current_resolution += 1
 
+        # with tf.devic
+
         # Residual from input
         to_rgb_1 = self.Upsampling()(self.growing_generator.output)
         to_rgb_1 = self.Conv(self.num_channels, kernel_size=1)(to_rgb_1)
@@ -81,7 +84,7 @@ class Generator:
         self.train_generator = tf.keras.models.Model(inputs=self.growing_generator.input, outputs=[output])
 
     def get_current_resolution(self):
-        return current_resolution
+        return self.current_resolution
 
     def get_trainable_generator(self):
         return self.train_generator
@@ -95,10 +98,10 @@ class Discriminator:
     Progressive Discriminator
     '''
 
-    def __init__(self, num_classes, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
+    def __init__(self, label_size=0, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
         super(Discriminator, self).__init__()
 
-        self.num_classes = num_classes
+        self.label_size = label_size
 
         self.fmap_base = fmap_base
         self.fmap_max = fmap_max
@@ -127,9 +130,9 @@ class Discriminator:
         x = layers.Dense(self._nf(1))(x)
         x = layers.Activation(tf.nn.leaky_relu)(x)
 
-        output = layers.Dense(self.num_classes)(x)
+        output = layers.Dense(1+self.label_size)(x)
 
-        return tf.keras.models.Model(inputs=[inputs], outputs=output)
+        return tf.keras.models.Model(inputs=[inputs], outputs=[output])
 
     def _make_discriminator_block(self, nf, name=''):
 
@@ -161,10 +164,13 @@ class Discriminator:
 
         lerp_input = self._weighted_sum()([from_rgb_1, from_rgb_2, alpha])
 
-        score_output = self.growing_discriminator(lerp_input)
+        output = self.growing_discriminator(lerp_input)
+
+        score_output = layers.Lambda(lambda x: x[...,0])(output)
+        label_output = layers.Lambda(lambda x: x[...,1:])(output)
 
         self.growing_discriminator = tf.keras.Sequential([d_block, self.growing_discriminator])
-        self.train_discriminator = tf.keras.models.Model(inputs=[inputs, alpha], outputs=[score_output])
+        self.train_discriminator = tf.keras.models.Model(inputs=[inputs, alpha], outputs=[score_output, label_output])
 
     def get_current_resolution(self):
         return self.current_resolution

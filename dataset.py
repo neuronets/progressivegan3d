@@ -12,10 +12,11 @@ def _bytes_feature(value):
 def _int64_feature(values):
     return tf.train.Feature(int64_list=tf.train.Int64List(value=values))
 
-def serialize_example(img, shape):
+def serialize_example(img, shape, label):
     feature = {
         'img' : _bytes_feature(img),
-        'shape' : _int64_feature(shape)
+        'shape' : _int64_feature(shape),
+        'label' : _int64_feature([label])
     }
 
     example_proto = tf.train.Example(features=tf.train.Features(feature=feature))
@@ -101,7 +102,17 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_im
 
                 img_data = img_data.ravel().tostring()
 
-                tf_record_writer.write(serialize_example(img_data, img_shape))
+                img_label = -1
+                
+                ## Write img label code here if used
+                # if 'T1' in str(f):
+                #     img_label=0
+                # elif 'T2' in str(f):
+                #     img_label=1
+                # else:
+                #     raise ValueError('Label does not exist')
+
+                tf_record_writer.write(serialize_example(img_data, img_shape, img_label))
                 img_count+=1
                 print('{} / {} images done'.format(img_count, n_images))
         

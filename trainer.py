@@ -25,15 +25,18 @@ class PGGAN(tf.Module):
         self.tf_record_dir = config.tf_record_dir
         self.latent_size = config.latent_size
         self.label_size = config.label_size
-        self.num_classes = config.num_classes
+        self.labels_exist = self.label_size > 0
+
         self.dimensionality = config.dimensionality
         self.num_channels = config.num_channels
         self.learning_rate = config.lr
         self.gpus = config.gpus
 
         self.d_repeats = config.d_repeats
-        self.iters_per_transition = {k: v*1000 for k, v in config.kiters_per_transition.items()}
-        self.iters_per_resolution = {k: v*1000 for k, v in config.kiters_per_resolution.items()}
+
+        self.iters_per_transition = config.kiters_per_transition
+        self.iters_per_resolution = config.kiters_per_resolution
+
         self.start_resolution = config.start_resolution
         self.target_resolution = config.target_resolution
         self.resolution_batch_size = config.resolution_batch_size
@@ -42,7 +45,7 @@ class PGGAN(tf.Module):
 
         self.generator = networks.Generator(self.latent_size, dimensionality=self.dimensionality, 
             num_channels=self.num_channels, fmap_base=config.g_fmap_base)
-        self.discriminator = networks.Discriminator(self.num_classes, dimensionality=self.dimensionality, 
+        self.discriminator = networks.Discriminator(self.label_size, dimensionality=self.dimensionality, 
             num_channels=self.num_channels, fmap_base=config.d_fmap_base)
 
         self.run_id = Path(config.run_id)
@@ -69,7 +72,7 @@ class PGGAN(tf.Module):
 
                 self.generator = networks.Generator(self.latent_size, dimensionality=self.dimensionality, 
                     num_channels=self.num_channels, fmap_base=config.g_fmap_base)
-                self.discriminator = networks.Discriminator(self.num_classes, dimensionality=self.dimensionality, 
+                self.discriminator = networks.Discriminator(self.label_size, dimensionality=self.dimensionality, 
                     num_channels=self.num_channels, fmap_base=config.d_fmap_base)
 
                 current_resolution = 2
@@ -86,16 +89,16 @@ class PGGAN(tf.Module):
         tf function must be retraced for every growth of the model
         '''
         @tf.function
-        def g_train_step(latents, alpha):
+        def g_train_step(latents, labels, alpha):
             with tf.GradientTape() as tape:
                 fakes = self.train_generator([latents, alpha])
-                fakes_pred = self.train_discriminator([fakes, alpha])
+                fakes_pred, labels_pred = self.train_discriminator([fakes, alpha])
 
                 g_loss = losses.wasserstein_loss(1, fakes_pred) 
                 # scaled_loss = self.g_optimizer.get_scaled_loss(g_loss)
 
                 if self.label_size>0:
-                    g_loss += losses.labels_loss(labels, labels_pred)
+                    g_loss += losses.labels_loss(labels, labels_pred, self.label_size)
 
             g_gradients = tape.gradient(g_loss, self.train_generator.trainable_variables)
             # scaled_gradients = tape.gradient(scaled_loss, self.train_generator.trainable_variables)
@@ -109,15 +112,15 @@ class PGGAN(tf.Module):
         tf function must be retraced for every growth of the model
         '''
         @tf.function
-        def d_train_step(latents, reals, alpha):
+        def d_train_step(latents, reals, labels, alpha):
             with tf.GradientTape() as tape:
                 fakes = self.train_generator([latents, alpha])
 
-                fakes_pred = self.train_discriminator([fakes, alpha])
-                reals_pred = self.train_discriminator([reals, alpha])
+                fakes_pred, labels_pred_fake = self.train_discriminator([fakes, alpha])
+                reals_pred, labels_pred_real = self.train_discriminator([reals, alpha])
 
+                w_fake_loss = losses.wasserstein_loss(-1, fakes_pred)
                 w_real_loss = losses.wasserstein_loss(1, reals_pred)
-                w_fake_loss = losses.wasserstein_loss(-1, fakes_pred) 
 
                 average_samples = utils.random_weight_sample(reals, fakes, dimensionality=self.dimensionality)
                 average_pred = self.train_discriminator([average_samples, alpha])
@@ -130,8 +133,8 @@ class PGGAN(tf.Module):
                 # scaled_loss = self.d_optimizer.get_scaled_loss(d_loss)
 
                 if self.label_size>0:
-                    d_loss += losses.labels_loss(labels, labels_pred_fake, weight=1.0)
-                    d_loss += losses.labels_loss(labels, labels_pred_real, weight=1.0)
+                    d_loss += losses.labels_loss(labels, labels_pred_fake, self.label_size, weight=1.0)
+                    d_loss += losses.labels_loss(labels, labels_pred_real, self.label_size, weight=1.0)
 
             d_gradients = tape.gradient(d_loss, self.train_discriminator.trainable_variables)
             # scaled_gradients = tape.gradient(scaled_loss, self.train_discriminator.trainable_variables)
@@ -143,17 +146,17 @@ class PGGAN(tf.Module):
 
     def get_mirrored_g_train_step(self, global_batch_size):
         @tf.function
-        def g_train_step(latents, alpha, global_batch_size=1):
-            def step_fn(latents, alpha):
+        def g_train_step(latents, labels, alpha, global_batch_size=1):
+            def step_fn(latents, labels, alpha):
                 with tf.GradientTape() as tape:
-                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
+                    latents = self.sample_random_latents(global_batch_size//len(self.gpus))
 
                     fakes = self.train_generator([latents, alpha])
-                    fakes_pred = self.train_discriminator([fakes, alpha])
+                    fakes_pred, labels_pred = self.train_discriminator([fakes, alpha])
 
                     g_loss = losses.wasserstein_loss(1, fakes_pred, reduction=False) 
                     if self.label_size>0:
-                        g_loss += losses.labels_loss(labels, labels_pred, weight=1.0)
+                        g_loss += losses.labels_loss(labels, labels_pred, self.label_size, weight=1.0)
 
                     g_gradient_loss = tf.reduce_sum(g_loss) * 1/global_batch_size
 
@@ -161,7 +164,7 @@ class PGGAN(tf.Module):
                 self.g_optimizer.apply_gradients(zip(g_gradients, self.train_generator.trainable_variables))
                 return g_loss
 
-            per_example_losses = self.strategy.experimental_run_v2(step_fn, args=(latents, alpha))
+            per_example_losses = self.strategy.experimental_run_v2(step_fn, args=(latents, labels, alpha))
             mean_loss = self.strategy.reduce(
                 tf.distribute.ReduceOp.SUM, per_example_losses, axis=0)
             return mean_loss/global_batch_size
@@ -169,14 +172,15 @@ class PGGAN(tf.Module):
 
     def get_mirrored_d_train_step(self, global_batch_size):
         @tf.function
-        def d_train_step(latents, reals, alpha, global_batch_size=1):
-            def step_fn(latents, reals, alpha):
+        def d_train_step(latents, reals, labels, alpha, global_batch_size=1):
+            def step_fn(latents, reals, labels, alpha):
                 with tf.GradientTape() as tape:
-                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
+
+                    latents = self.sample_random_latents(global_batch_size//len(self.gpus))
 
                     fakes = self.train_generator([latents, alpha])
-                    fakes_pred = self.train_discriminator([fakes, alpha])
-                    reals_pred = self.train_discriminator([reals, alpha])
+                    fakes_pred, labels_pred_fake = self.train_discriminator([fakes, alpha])
+                    reals_pred, labels_pred_real = self.train_discriminator([reals, alpha])
 
                     w_real_loss = losses.wasserstein_loss(1, reals_pred, reduction=False)
                     w_fake_loss = losses.wasserstein_loss(-1, fakes_pred, reduction=False) 
@@ -191,8 +195,8 @@ class PGGAN(tf.Module):
                     d_loss = w_real_loss + w_fake_loss + gp_loss + epsilon_loss
 
                     if self.label_size>0:
-                        d_loss += losses.labels_loss(labels, labels_pred_fake, weight=1.0)
-                        d_loss += losses.labels_loss(labels, labels_pred_real, weight=1.0)
+                        d_loss += losses.labels_loss(labels, labels_pred_fake, self.label_size, weight=1.0)
+                        d_loss += losses.labels_loss(labels, labels_pred_real, self.label_size, weight=1.0)
 
                     d_gradient_loss = d_loss * (1/global_batch_size)
 
@@ -201,7 +205,7 @@ class PGGAN(tf.Module):
 
                 return d_loss
 
-            per_example_losses = self.strategy.experimental_run_v2(step_fn, args=(latents, reals, alpha))
+            per_example_losses = self.strategy.experimental_run_v2(step_fn, args=(latents, reals, labels, alpha))
             mean_loss = self.strategy.reduce(
                 tf.distribute.ReduceOp.SUM, per_example_losses, axis=0)
             return mean_loss/global_batch_size
@@ -216,12 +220,23 @@ class PGGAN(tf.Module):
         self.train_discriminator = self.discriminator.get_trainable_discriminator()
 
 
+    def sample_random_latents(self, batch_size, label=None):
+        latents = tf.random.normal((batch_size, self.latent_size - self.label_size))
+        if self.labels_exist:
+            if label is None:
+                labels = tf.random.uniform((batch_size,), maxval=self.label_size, dtype=tf.int32)
+            else:
+                labels = [label]*batch_size
+            labels = tf.one_hot(labels, depth=self.label_size)
+            latents = tf.concat((latents, labels), axis=1)
+        return latents
+
     def get_current_batch_size(self, current_resolution):
         return self.resolution_batch_size[2**current_resolution]
 
     def get_current_dataset(self, current_resolution):
         batch_size = self.get_current_batch_size(current_resolution)
-        dataset = utils.get_dataset(self.tf_record_dir, current_resolution, batch_size, self.dimensionality)
+        dataset = utils.get_dataset(self.tf_record_dir, current_resolution, batch_size, self.dimensionality, self.labels_exist)
         return dataset
 
     def get_current_alpha(self, iters_done, iters_per_transition):
@@ -273,27 +288,27 @@ class PGGAN(tf.Module):
 
             i = 0
 
-            for reals in dataset:
+            for reals, labels in dataset:
                 iters_done+=batch_size
 
                 if iters_done > iters_total:
                     break
 
-                latents = tf.random.normal((batch_size, self.latent_size)) 
+                latents = self.sample_random_latents(batch_size)
 
                 if i%self.d_repeats==0:
                     if self.strategy is not None:
                         with self.strategy.scope():
-                            g_loss = g_train_step(latents, alpha)
+                            g_loss = g_train_step(latents, labels, alpha)
                     else:
-                        g_loss = g_train_step(latents, alpha)
+                        g_loss = g_train_step(latents, labels, alpha)
                     g_loss_tracker.update_state(g_loss)
                 
                 if self.strategy is not None:
                     with self.strategy.scope():
-                        d_loss = d_train_step(latents, reals, alpha)
+                        d_loss = d_train_step(latents, reals, labels, alpha)
                 else:
-                    d_loss = d_train_step(latents, reals, alpha)
+                    d_loss = d_train_step(latents, reals, labels, alpha)
                 d_loss_tracker.update_state(d_loss)
 
                 prog_bar.add(batch_size, [('G Loss', g_loss_tracker.result()), ('D Loss', d_loss_tracker.result())])
@@ -350,7 +365,7 @@ class PGGAN(tf.Module):
 
     def generate_samples_3d(self, num_samples, current_resolution):
         for i in range(num_samples):
-            latents = tf.random.normal((1, self.latent_size)) 
+            latents = self.sample_random_latents(batch_size=1, label=i%2)
             fakes = self.train_generator([latents, 1.0])
             fakes = utils.adjust_dynamic_range(fakes, [-1.0, 1.0], [0.0, 255.0])
             fakes = tf.clip_by_value(fakes, 0.0, 255.0)

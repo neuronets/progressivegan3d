@@ -30,11 +30,14 @@ def parse_2d_image(record, target_res):
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
     return img
 
-def parse_3d_image(record, target_res):
+def parse_3d_image(record, target_res, labels_exist=False):
     image_feature_description = {
         'img': tf.io.FixedLenFeature([], tf.string),
         'shape': tf.io.FixedLenFeature([4], tf.int64)
+        
     }
+    if labels_exist:
+        image_feature_description['label'] = tf.io.FixedLenFeature([], tf.int64)
     data = tf.io.parse_single_example(record, image_feature_description)
     img = data['img']
     img = tf.io.decode_raw(img, tf.uint8)
@@ -51,24 +54,29 @@ def parse_3d_image(record, target_res):
         img = (img) * 0.125
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
 
-    return img
+    if labels_exist:
+        label = data['label']
+    else:
+        label = -1
 
-def parse_image(record, target_res, dimensionality):
+    return img, label
+
+def parse_image(record, target_res, dimensionality, labels_exist):
 
     if dimensionality==2:
-        return parse_2d_image(record, target_res)
+        return parse_2d_image(record, target_res, labels_exist=labels_exist)
     else:
-        return parse_3d_image(record, target_res)
+        return parse_3d_image(record, target_res, labels_exist=labels_exist)
 
-def get_dataset(tf_record_dir, res, batch_size, dimensionality):
+def get_dataset(tf_record_dir, res, batch_size, dimensionality, labels_exist=False):
     with tf.device('cpu:0'):
         dataset = tf.data.Dataset.list_files(os.path.join(tf_record_dir, '*.tfrecord'))
         dataset = dataset.shuffle(20)
         dataset = dataset.interleave(lambda file: tf.data.TFRecordDataset(file, compression_type='GZIP'),
                          cycle_length=tf.data.experimental.AUTOTUNE, block_length=4)
-        dataset = dataset.map(lambda x: parse_image(x, target_res=res, dimensionality=dimensionality), 
+        dataset = dataset.map(lambda x: parse_image(x, target_res=res, dimensionality=dimensionality, labels_exist=labels_exist), 
                     num_parallel_calls=tf.data.experimental.AUTOTUNE)
-        dataset = dataset.shuffle(200)
+        dataset = dataset.shuffle(100)
         dataset = dataset.batch(batch_size, drop_remainder=True)
         dataset = dataset.prefetch(buffer_size=tf.data.experimental.AUTOTUNE)
         return dataset
