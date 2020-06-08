@@ -27,8 +27,8 @@ class Generator:
         self.Upsampling = getattr(layers, 'UpSampling{}D'.format(self.dimensionality))
 
     def _pixel_norm(self, epsilon=1e-8):
-        return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
-        # return layers.BatchNormalization(axis=-1)
+        # return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
+        return layers.BatchNormalization(axis=-1)
 
     def _weighted_sum(self):
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])

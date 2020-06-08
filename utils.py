@@ -42,16 +42,13 @@ def parse_3d_image(record, target_res, labels_exist=False):
     img = data['img']
     img = tf.io.decode_raw(img, tf.uint8)
     img = tf.cast(img, tf.float32)
-    img = tf.reshape(img, data['shape'])
+    # img = tf.reshape(img, data['shape'])
+    img = tf.reshape(img, (2**target_res, 2**target_res, 2**target_res, data['shape'][-1]))
 
     shape = tf.cast(data['shape'], tf.float32)
 
     full_res = tf.cast(tf.math.log(shape[0])/tf.math.log(2.0), tf.int32)
 
-    for i in range(full_res-target_res):
-        img = img[0::2,0::2,0::2,:]+img[0::2,0::2,1::2,:]+img[0::2,1::2,0::2,:]+img[0::2,1::2,1::2,:] \
-                        +img[1::2,0::2,0::2,:]+img[1::2,0::2,1::2,:]+img[1::2,1::2,0::2,:]+img[1::2,1::2,1::2,:]
-        img = (img) * 0.125
     img = adjust_dynamic_range(img, [0.0, 255.0], [-1.0, 1.0])
 
     if labels_exist:
@@ -70,7 +67,8 @@ def parse_image(record, target_res, dimensionality, labels_exist):
 
 def get_dataset(tf_record_dir, res, batch_size, dimensionality, labels_exist=False):
     with tf.device('cpu:0'):
-        dataset = tf.data.Dataset.list_files(os.path.join(tf_record_dir, '*.tfrecord'))
+        dataset = tf.data.Dataset.list_files(os.path.join(tf_record_dir, 'resolution-%03d-*.tfrecord'%(2**(res))))
+
         dataset = dataset.shuffle(20)
         dataset = dataset.interleave(lambda file: tf.data.TFRecordDataset(file, compression_type='GZIP'),
                          cycle_length=tf.data.experimental.AUTOTUNE, block_length=4)

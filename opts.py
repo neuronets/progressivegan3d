@@ -18,6 +18,8 @@ class Opts:
         self.parser_prepare.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of data [2|3]')
         self.parser_prepare.add_argument('--glob_ext', default='*.nii.gz', help='Extension of files for globbing')
         self.parser_prepare.add_argument('--n_img_per_shard', default=500, type=int, help='No. of images per shard')
+        self.parser_prepare.add_argument('--start_resolution', default=4, type=int, help='Start resolution for generator')
+        self.parser_prepare.add_argument('--target_resolution', default=256, type=int, help='Target resolution for generator')
 
         # Train Task
         self.parser_train = self.subparsers.add_parser('train', help='Train the progressive GAN')
