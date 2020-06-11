@@ -52,10 +52,13 @@ class Generator:
         
         block_layers = []
 
-        block_layers.append(self.ConvTranspose(nf, kernel_size=3, strides=2, padding='same'))
+        # block_layers.append(self.ConvTranspose(nf, kernel_size=3, strides=2, padding='same'))
+        block_layers.append(self.Upsampling())
+        block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
         block_layers.append(layers.Activation(tf.nn.leaky_relu))
         block_layers.append(self._pixel_norm())
 
+        # block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
         block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
         block_layers.append(layers.Activation(tf.nn.leaky_relu))
         block_layers.append(self._pixel_norm())
@@ -65,8 +68,6 @@ class Generator:
     def add_resolution(self):
 
         self.current_resolution += 1
-
-        # with tf.devic
 
         # Residual from input
         to_rgb_1 = self.Upsampling()(self.growing_generator.output)
