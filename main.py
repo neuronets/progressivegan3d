@@ -5,11 +5,13 @@ from opts import Opts
 from trainer import PGGAN
 import dataset
 import tests
+import utils
 
 
 def main(config):
 
     if config.task == 'prepare':
+        print('Preparing ...')
         dataset.prepare_tf_record_dataset(
             dataset_dir=config.dataset_dir, 
             tf_record_save_dir=config.tf_record_save_dir, 
@@ -18,10 +20,16 @@ def main(config):
             n_img_per_shard=config.n_img_per_shard)
 
     elif config.task == 'train':
+        print('Training ...')
         pggan = PGGAN(config)
         pggan.train()
 
+    elif config.task == 'generate':
+        print('Generating ...')
+        utils.generate(config)
+
     elif config.task == 'test':
+        print('Testing ...')
         tests.do_test(config)
 
 
