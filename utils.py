@@ -2,6 +2,7 @@ import os
 import numpy as np
 import tensorflow as tf
 import nibabel as nib
+from pathlib import Path
 import scipy
 
 def adjust_dynamic_range(data, drange_in, drange_out):
@@ -85,3 +86,20 @@ def save_generated_mri(generated, filename, dynamic_range=[-1, 1]):
     img_arr = np.squeeze(np.array(generated)).astype(np.uint8)
     mri = nib.Nifti1Image(img_arr, np.eye(4))
     nib.save(mri, filename)
+
+def generate(config):
+    run_id = Path(config.run_id)
+    model_dir = run_id.joinpath(config.model_dir)
+    generated_dir = run_id.joinpath(config.generated_dir)
+    start_resolution_log = int(np.log2(config.start_resolution))
+    target_resolution_log = int(np.log2(config.target_resolution))
+
+    generated_dir.mkdir(exist_ok=True)
+
+    for res in range(start_resolution_log+1, target_resolution_log+1):
+        generator = tf.keras.models.load_model(str(model_dir.joinpath('g_{}.h5'.format(res))), custom_objects={'leaky_relu': tf.nn.leaky_relu})
+        for i in range(config.num_samples):
+            latents = tf.random.normal((1, config.latent_size))
+            fakes = generator([latents, 1.0])
+            save_generated_mri(fakes[0], str(generated_dir.joinpath('res_{}_{}.nii.gz'.format(res, i))))
+

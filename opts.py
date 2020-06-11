@@ -49,6 +49,19 @@ class Opts:
         self.parser_train.add_argument('--d_fmap_base', default=2048, type=int, help='Discriminator fmap base')
         self.parser_train.add_argument('--g_fmap_base', default=2048, type=int, help='Generator fmap base')
 
+
+        # Generate Task
+        self.parser_generate = self.subparsers.add_parser('generate', help='Generate fake images in all resolutions')
+
+        self.parser_generate.add_argument('--run_id', default='1', help='Run ID to save data')
+        self.parser_generate.add_argument('--generated_dir', default='fakes', help='Path in Run ID to store generated images')
+        self.parser_generate.add_argument('--model_dir', default='saved_models', help='Path in Run ID to find saved models')
+        self.parser_generate.add_argument('--latent_size', default=1024, type=int, help='Latent size for generator')
+        self.parser_generate.add_argument('--dimensionality', default=3, type=int, help='Dimensionality of model [2|3]')
+        self.parser_generate.add_argument('--start_resolution', default=4, type=int, help='start resolution')
+        self.parser_generate.add_argument('--target_resolution', default=256, type=int, help='target resolution')
+        self.parser_generate.add_argument('--num_samples', default=10, type=int, help='NNumber of samples to generate')
+
         # Test Task
         self.parser_test = self.subparsers.add_parser('test', help='Tests to run on generator')
 
@@ -80,13 +93,13 @@ class Opts:
             config.resolution_batch_size = {4: 64, 8: 32, 16: 16, 32: 8, 64: 4, 128: 2, 256: 1} # per gpu
 
             if config.kiters_per_transition == 0:
-                config.kiters_per_transition = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+                config.kiters_per_transition = {4: 80, 8: 100, 16: 120, 32: 140, 64: 160, 128: 180, 256: 200}
             else:
                 config.kiters_per_transition = {k: config.kiters_per_transition 
                     for k in [2**i for i in range(int(np.log2(config.target_resolution))+1)]}
 
             if config.kiters_per_resolution == 0:
-                config.kiters_per_resolution = {4: 20, 8: 40, 16: 60, 32: 80, 64: 100, 128: 200, 256: 400}
+                config.kiters_per_resolution = {4: 80, 8: 100, 16: 120, 32: 140, 64: 160, 128: 180, 256: 200}
             else:
                 config.kiters_per_resolution = {k: config.kiters_per_resolution 
                     for k in [2**i for i in range(int(np.log2(config.target_resolution))+1)]}
