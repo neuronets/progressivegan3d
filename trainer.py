@@ -82,6 +82,9 @@ class PGGAN(tf.Module):
                     self.add_resolution()
                     current_resolution+=1
 
+                self.generator.train_generator.load_weights(str(self.model_dir.joinpath('g_{}.h5'.format(current_resolution))))
+                self.discriminator.train_discriminator.load_weights(str(self.model_dir.joinpath('d_{}.h5'.format(current_resolution))))
+
 
     # TODO: Write decorator
     def get_g_train_step(self):
@@ -149,7 +152,8 @@ class PGGAN(tf.Module):
         def g_train_step(latents, labels, alpha, global_batch_size=1):
             def step_fn(latents, labels, alpha):
                 with tf.GradientTape() as tape:
-                    latents = self.sample_random_latents(global_batch_size//len(self.gpus))
+                    # latents = self.sample_random_latents(global_batch_size//len(self.gpus))
+                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
 
                     fakes = self.train_generator([latents, alpha])
                     fakes_pred, labels_pred = self.train_discriminator([fakes, alpha])
@@ -176,7 +180,8 @@ class PGGAN(tf.Module):
             def step_fn(latents, reals, labels, alpha):
                 with tf.GradientTape() as tape:
 
-                    latents = self.sample_random_latents(global_batch_size//len(self.gpus))
+                    # latents = self.sample_random_latents(global_batch_size//len(self.gpus))
+                    latents = tf.random.normal((global_batch_size//len(self.gpus), self.latent_size))
 
                     fakes = self.train_generator([latents, alpha])
                     fakes_pred, labels_pred_fake = self.train_discriminator([fakes, alpha])
