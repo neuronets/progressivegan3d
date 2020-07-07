@@ -6,7 +6,7 @@ class Generator:
     '''
     Progressive Generator
     '''
-    def __init__(self, latent_size, label_size=0, num_channels=3, fmap_base=8192, fmap_max=512, dimensionality=2):
+    def __init__(self, latent_size, label_size=0, num_channels=3, fmap_base=8192, fmap_max=256, dimensionality=2):
         super(Generator, self).__init__()
 
         self.latent_size = latent_size
@@ -27,8 +27,8 @@ class Generator:
         self.Upsampling = getattr(layers, 'UpSampling{}D'.format(self.dimensionality))
 
     def _pixel_norm(self, epsilon=1e-8):
-        # return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
-        return layers.BatchNormalization(axis=-1)
+        return layers.Lambda(lambda x: x * tf.math.rsqrt(tf.reduce_mean(tf.square(x), axis=-1, keepdims=True) + epsilon))
+        # return layers.BatchNormalization(axis=-1)
 
     def _weighted_sum(self):
         return layers.Lambda(lambda inputs : (1-inputs[2])*inputs[0] + (inputs[2])*inputs[1])
@@ -54,12 +54,12 @@ class Generator:
 
         # block_layers.append(self.ConvTranspose(nf, kernel_size=3, strides=2, padding='same'))
         block_layers.append(self.Upsampling())
-        block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
-        block_layers.append(layers.Activation(tf.nn.leaky_relu))
-        block_layers.append(self._pixel_norm())
+        # block_layers.append(self.Conv(nf, kernel_size=4, strides=1, padding='same'))
+        # block_layers.append(layers.Activation(tf.nn.leaky_relu))
+        # block_layers.append(self._pixel_norm())
 
         # block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
-        block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
+        block_layers.append(self.Conv(nf, kernel_size=4, strides=1, padding='same'))
         block_layers.append(layers.Activation(tf.nn.leaky_relu))
         block_layers.append(self._pixel_norm())
 
@@ -139,10 +139,10 @@ class Discriminator:
 
         block_layers = []
 
-        block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
-        block_layers.append(layers.Activation(tf.nn.leaky_relu))
+        # block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
+        # block_layers.append(layers.Activation(tf.nn.leaky_relu))
 
-        block_layers.append(self.Conv(nf, kernel_size=3, strides=2, padding='same'))
+        block_layers.append(self.Conv(nf, kernel_size=4, strides=2, padding='same'))
         block_layers.append(layers.Activation(tf.nn.leaky_relu))
 
         return tf.keras.models.Sequential(block_layers, name=name)
