@@ -54,9 +54,9 @@ class Generator:
 
         # block_layers.append(self.ConvTranspose(nf, kernel_size=3, strides=2, padding='same'))
         block_layers.append(self.Upsampling())
-        # block_layers.append(self.Conv(nf, kernel_size=4, strides=1, padding='same'))
-        # block_layers.append(layers.Activation(tf.nn.leaky_relu))
-        # block_layers.append(self._pixel_norm())
+        block_layers.append(self.Conv(nf, kernel_size=4, strides=1, padding='same'))
+        block_layers.append(layers.Activation(tf.nn.leaky_relu))
+        block_layers.append(self._pixel_norm())
 
         # block_layers.append(self.Conv(nf, kernel_size=3, strides=1, padding='same'))
         block_layers.append(self.Conv(nf, kernel_size=4, strides=1, padding='same'))
