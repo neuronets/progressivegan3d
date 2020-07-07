@@ -38,7 +38,11 @@ Add `--label_size x` for x labels in training
 
 ## Inference
 
-Coming soon .. 
+```
+python main.py generate
+    --run_id path/to/load
+    --dimensionality 2/3
+```
 
 ## Run Tests
 
