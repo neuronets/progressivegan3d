@@ -178,9 +178,9 @@ def prepare_3d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_im
 
     print('Total time taken: {}'.format(time.time()-start))
 
-def prepare_tf_record_dataset(dataset_dir, tf_record_save_dir, dimensionality, glob_ext, n_img_per_shard):
+def prepare_tf_record_dataset(dataset_dir, tf_record_save_dir, dimensionality, glob_ext, n_img_per_shard, start_resolution, target_resolution):
     if dimensionality==2:
-        return prepare_2d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_img_per_shard)
+        return prepare_2d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_img_per_shard, start_resolution, target_resolution)
     else:
-        return prepare_3d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_img_per_shard)
+        return prepare_3d_tf_record_dataset(dataset_dir, tf_record_save_dir, glob_ext, n_img_per_shard, start_resolution, target_resolution)
 

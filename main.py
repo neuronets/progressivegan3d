@@ -17,7 +17,9 @@ def main(config):
             tf_record_save_dir=config.tf_record_save_dir, 
             dimensionality=config.dimensionality,
             glob_ext=config.glob_ext,
-            n_img_per_shard=config.n_img_per_shard)
+            n_img_per_shard=config.n_img_per_shard,
+            start_resolution=config.start_resolution,
+            target_resolution=config.target_resolution)
 
     elif config.task == 'train':
         print('Training ...')
